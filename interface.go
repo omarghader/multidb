@@ -13,18 +13,18 @@ type Database interface {
 	Exists() bool
 	Drop() error
 	Table(name string) Table
-	Graph(name string, from []string, to []string) Graph
-	ExecQuery(query string, params interface{}) ([]interface{}, error)
+	Graph(name string, fromTables []string, toTables []string) Graph
+	ExecQuery(query string, params map[string]interface{}) ([]interface{}, error)
 }
 
 type Table interface {
 	Create() error
 	Exists() bool
 	Drop() error
-	Insert(string, interface{}) error
+	Insert(string, interface{}) (interface{}, error)
 	Find(string) (interface{}, error)
-	Update(string, interface{}) error
-	Delete(string) error
+	Update(string, interface{}) (interface{}, error)
+	Delete(string) (interface{}, error)
 }
 
 type Graph interface {
@@ -33,8 +33,9 @@ type Graph interface {
 }
 
 type Relation interface {
-	Insert(string, string, interface{}) error
+	Create(fromNode, toNode string, params interface{}) error
+	Insert(string, string, interface{}) (interface{}, error)
 	Find(string) (interface{}, error)
-	Update(string, interface{}) error
-	Delete(string) error
+	Update(string, interface{}) (interface{}, error)
+	Delete(string) (interface{}, error)
 }

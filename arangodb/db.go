@@ -1,12 +1,12 @@
 package multidb
 
 var ARANGODB = "ARANGODB"
-var MONGODB = "MONGODB"
 
 type database struct {
-	Session interface{}
-	Name    string
-	Type    string
+	Session       interface{}
+	ClientSession interface{}
+	Name          string
+	Type          string
 }
 
 type table struct {
@@ -22,6 +22,6 @@ type graph struct {
 }
 
 type relation struct {
-	Graph graph
+	Graph *graph
 	Name  string
 }
