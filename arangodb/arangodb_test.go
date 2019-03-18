@@ -1,10 +1,10 @@
-package multidb
+package arangodb
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
-	driver "github.com/arangodb/go-driver"
 	"github.com/omarghader/multidb"
 )
 
@@ -71,7 +71,8 @@ func TestArangoTable(t *testing.T) {
 	if tbl.Exists() {
 		err := tbl.Drop()
 		if err != nil {
-			t.Errorf("Cannot drop table")
+			t.Errorf("Cannot drop table: %s", err)
+			panic(err)
 		}
 	}
 
@@ -80,37 +81,44 @@ func TestArangoTable(t *testing.T) {
 		t.Errorf("Cannot create table")
 	}
 
-	doc := map[string]string{"_key": "doc1", "name": "document1"}
-	_, err = tbl.Insert("doc1", doc)
+	doc := DocTest{
+		Key:  "doc1",
+		Name: "document1",
+	}
+	var docRes Document
+	_, err = tbl.Insert(doc, &docRes)
 	if err != nil {
 		t.Errorf("Cannot insert table")
 	}
 
-	doc1, err := tbl.Find("doc1")
+	var doc1 DocTest
+	_, err = tbl.Find(docRes.Key, &doc1)
 	if err != nil {
-		t.Errorf("Cannot find table")
+		t.Errorf("Cannot find table %s", err)
+		panic(err)
 	}
 
-	if doc1.(map[string]interface{})["name"] != "document1" {
+	if doc1.Name != "document1" {
 		t.Errorf("Cannot find object from table")
 	}
 
-	doc["name"] = "document2"
-	_, err = tbl.Update("doc1", doc)
+	doc.Name = "document2"
+	_, err = tbl.Update(docRes.Key, doc, nil)
 	if err != nil {
-		t.Errorf("Cannot update table")
+		t.Errorf("Cannot update table %s", err)
 	}
 
-	doc2, err := tbl.Find("doc1")
+	var doc2 DocTest
+	_, err = tbl.Find(docRes.Key, &doc2)
 	if err != nil {
 		t.Errorf("Cannot find table")
 	}
 
-	if doc2.(map[string]interface{})["name"] != "document2" {
+	if doc2.Name != "document2" {
 		t.Errorf("Cannot updae object from table")
 	}
 
-	_, err = tbl.Delete("doc1")
+	_, err = tbl.Delete(docRes.Key, nil)
 	if err != nil {
 		t.Errorf("Cannot find table")
 	}
@@ -149,9 +157,14 @@ func TestArangoGraph(t *testing.T) {
 	d1.Key = "diego"
 	d1.Id = "test1/diego"
 
-	d1Res, err := db.Table("test1").Insert("", d1)
+	var d1Res Document
+	_, err := db.Table("test1").Insert(d1, &d1Res)
 	if err != nil {
 		panic(err)
+	}
+
+	if d1Res.Key != d1.Key {
+		panic(errors.New("Insert : result does not match input "))
 	}
 
 	d2.Name = "Facundo"
@@ -160,20 +173,25 @@ func TestArangoGraph(t *testing.T) {
 	d2.Key = "facundo"
 	d2.Id = "test1/facundo"
 
-	d2Res, err := db.Table("test1").Insert("", d2)
+	var d2Res Document
+	_, err = db.Table("test1").Insert(d2, &d2Res)
 	if err != nil {
 		panic(err)
 	}
 
 	var graphName = "graphTest"
-	graph := db.Graph(graphName, []string{"test1"}, []string{"test1"})
+	graph := db.Graph(graphName)
 	graph.Create()
 
 	rel := graph.Relation("is_related")
 	fmt.Printf("Connecting %s => %s \n", d1.Id, d2.Id)
 
-	relation, err := rel.Insert((d1Res.(driver.DocumentMeta)).ID.String(),
-		(d2Res.(driver.DocumentMeta)).ID.String(), map[string]interface{}{"is": "friend"})
+	relation, err := rel.Insert(
+		Edge{
+			From: d1Res.ID,
+			To:   d2Res.ID,
+		},
+		map[string]interface{}{"is": "friend"})
 	if err != nil {
 		t.Errorf("Relation creation error : %s\n", err)
 	}
@@ -182,8 +200,12 @@ func TestArangoGraph(t *testing.T) {
 		t.Errorf("Relation should not be nil\n")
 	}
 
-	_, err = rel.Insert((d2Res.(driver.DocumentMeta)).ID.String(),
-		(d2Res.(driver.DocumentMeta)).ID.String(), map[string]interface{}{"is": "me"})
+	_, err = rel.Insert(
+
+		Edge{
+			From: d2Res.ID,
+			To:   d2Res.ID,
+		}, map[string]interface{}{"is": "me"})
 	if err != nil {
 		t.Errorf("Relation creation error : %s\n", err)
 	}

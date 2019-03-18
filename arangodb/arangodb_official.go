@@ -1,15 +1,14 @@
-package multidb
+package arangodb
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/Sirupsen/logrus"
 	driver "github.com/arangodb/go-driver"
 	"github.com/arangodb/go-driver/http"
 	"github.com/omarghader/multidb"
+	"github.com/sirupsen/logrus"
 )
 
 func NewArangodb(options multidb.ConnectionOptions) multidb.Database {
@@ -49,17 +48,11 @@ func NewArangodb(options multidb.ConnectionOptions) multidb.Database {
 }
 
 func (d *database) getSession() driver.Database {
-	if d.Session != nil {
-		return d.Session.(driver.Database)
-	}
-	return nil
+	return d.Session
 }
 
 func (d *database) getClientSession() driver.Client {
-	if d.ClientSession != nil {
-		return d.ClientSession.(driver.Client)
-	}
-	return nil
+	return d.ClientSession
 }
 
 func (d *database) Create() error {
@@ -99,14 +92,19 @@ func (d *database) Drop() error {
 }
 
 func (d *database) Table(name string) multidb.Table {
-	return &table{Db: d, Name: name}
+	col, err := d.getSession().Collection(nil, name)
+	if err != nil {
+		logrus.Errorf("%s: %s\n", multidb.EXCEPTION_TABLE_NOTFOUND, err.Error())
+	}
+
+	return &table{Db: d, Name: name, Collection: col}
 }
 
-func (d *database) Graph(name string, from, to []string) multidb.Graph {
-	return &graph{Db: d, Name: name, fromType: from, toType: to}
+func (d *database) Graph(name string) multidb.Graph {
+	return &graph{Db: d, Name: name}
 }
 
-func (d *database) ExecQuery(query string, params map[string]interface{}) ([]interface{}, error) {
+func (d *database) ExecQuery(query string, params map[string]interface{}, res []interface{}) ([]interface{}, error) {
 	cursor, err := d.getSession().Query(nil, query, params)
 
 	if err != nil {
@@ -114,8 +112,6 @@ func (d *database) ExecQuery(query string, params map[string]interface{}) ([]int
 		return nil, errors.New(multidb.EXCEPTION_QUERY)
 	}
 	defer cursor.Close()
-
-	res := []interface{}{}
 
 	for {
 		var doc interface{}
@@ -143,11 +139,12 @@ func (t *table) getSession() driver.Database {
 
 func (t *table) Create() error {
 	session := t.getSession()
-	_, err := session.CreateCollection(nil, t.Name, nil)
+	col, err := session.CreateCollection(nil, t.Name, nil)
 	if err != nil {
 		logrus.Errorf("%s: %s\n", multidb.EXCEPTION_TABLE_CREATE, err.Error())
 		return err
 	}
+	t.Collection = col
 	return nil
 }
 
@@ -178,35 +175,24 @@ func (t *table) Drop() error {
 	return nil
 }
 
-func (t *table) Insert(id string, doc interface{}) (interface{}, error) {
-	session := t.getSession()
-	col, err := session.Collection(nil, t.Name)
+func (t *table) Insert(doc interface{}, res interface{}) (interface{}, error) {
+
+	result, err := t.Collection.CreateDocument(nil, doc)
 	if err != nil {
 		logrus.Errorf("%s: %s\n", multidb.EXCEPTION_TABLE_INSERT_ERROR, err.Error())
 		return nil, err
 	}
 
-	res, err := col.CreateDocument(nil, doc)
-
-	if err != nil {
-		logrus.Errorf("%s: %s\n", multidb.EXCEPTION_TABLE_INSERT_ERROR, err.Error())
-		return nil, err
+	if res != nil {
+		multidb.ToStruct(result, &res)
 	}
 
-	return res, nil
+	return result, nil
 }
 
-func (t *table) Find(id string) (interface{}, error) {
-	session := t.getSession()
-	var res map[string]interface{}
+func (t *table) Find(id string, res interface{}) (interface{}, error) {
 
-	col, err := session.Collection(nil, t.Name)
-	if err != nil {
-		logrus.Errorf("%s: %s\n", multidb.EXCEPTION_TABLE_FIND_ERROR, err.Error())
-		return nil, err
-	}
-
-	_, err = col.ReadDocument(nil, id, &res)
+	_, err := t.Collection.ReadDocument(nil, id, res)
 	if err != nil {
 		logrus.Errorf("%s: %s\n", multidb.EXCEPTION_TABLE_FIND_ERROR, err.Error())
 		return nil, err
@@ -214,39 +200,35 @@ func (t *table) Find(id string) (interface{}, error) {
 	return res, nil
 }
 
-func (t *table) Update(id string, doc interface{}) (interface{}, error) {
-	session := t.getSession()
-	col, err := session.Collection(nil, t.Name)
-	if err != nil {
-		logrus.Errorf("%s: %s\n", multidb.EXCEPTION_TABLE_UPDATE_ERROR, err.Error())
-		return nil, err
-	}
+func (t *table) Update(id string, doc interface{}, res interface{}) (interface{}, error) {
 
-	res, err := col.UpdateDocument(nil, id, doc)
+	result, err := t.Collection.UpdateDocument(nil, id, doc)
 
 	if err != nil {
 		logrus.Errorf("%s: %s\n", multidb.EXCEPTION_TABLE_UPDATE_ERROR, err.Error())
 		return nil, err
 	}
 
-	return res, nil
+	if res != nil {
+		multidb.ToStruct(result, &res)
+	}
+
+	return result, nil
 }
 
-func (t *table) Delete(id string) (interface{}, error) {
-	session := t.getSession()
-	col, err := session.Collection(nil, t.Name)
-	if err != nil {
-		logrus.Errorf("%s: %s\n", multidb.EXCEPTION_TABLE_DELETE_ERROR, err.Error())
-		return nil, err
-	}
-
-	res, err := col.RemoveDocument(nil, id)
+func (t *table) Delete(id string, res interface{}) (interface{}, error) {
+	result, err := t.Collection.RemoveDocument(nil, id)
 
 	if err != nil {
 		logrus.Errorf("%s: %s\n", multidb.EXCEPTION_TABLE_DELETE_ERROR, err.Error())
 		return nil, err
 	}
-	return res, nil
+
+	if res != nil {
+		multidb.ToStruct(result, &res)
+	}
+
+	return result, nil
 }
 
 //-----------------------------------------------
@@ -277,7 +259,12 @@ func (g *graph) Create() error {
 }
 
 func (g *graph) Relation(name string) multidb.Relation {
-	return &relation{Name: name, Graph: g}
+	col, err := g.getSession().Collection(nil, name)
+	if err != nil {
+		logrus.Errorf("%s: %s\n", multidb.EXCEPTION_TABLE_NOTFOUND, err.Error())
+	}
+
+	return &relation{Name: name, Graph: g, Collection: col}
 }
 
 // -----------------------------------------------
@@ -300,7 +287,7 @@ func (r *relation) Create(from, to string, params interface{}) error {
 			return err
 		}
 
-		_, err = graph.CreateEdgeCollection(nil, r.Name, driver.VertexConstraints{
+		collection, err := graph.CreateEdgeCollection(nil, r.Name, driver.VertexConstraints{
 			From: []string{strings.Split(from, "/")[0]},
 			To:   []string{strings.Split(to, "/")[0]},
 		})
@@ -310,13 +297,15 @@ func (r *relation) Create(from, to string, params interface{}) error {
 			return err
 		}
 
+		r.Collection = collection
 	}
+
 	return nil
 
 }
 
 func (r *relation) Exists() bool {
-	tbl := multidb.Table(&table{Db: r.Graph.Db, Name: r.Name})
+	tbl := multidb.Table(&table{Db: r.Graph.Db, Name: r.Name, Collection: r.Collection})
 	return tbl.Exists()
 }
 
@@ -331,32 +320,16 @@ func (r *relation) Drop() error {
 	return nil
 }
 
-func (r *relation) Insert(from, to string, props interface{}) (interface{}, error) {
-	err := r.Create(from, to, nil)
+func (r *relation) Insert(data interface{}, res interface{}) (interface{}, error) {
+	edge := data.(Edge)
+	err := r.Create(edge.From, edge.To, nil)
 	if err != nil {
 		logrus.Errorf("%s: %s\n", multidb.EXCEPTION_RELATION_INSERT_ERROR, err.Error())
 		return nil, err
 	}
 
-	marshalledProps, err := json.Marshal(props)
-	if err != nil {
-		logrus.Errorf("%s: %s\n", "Cannot parse relation props", err.Error())
-		return nil, err
-	}
-
-	var relProps map[string]interface{}
-
-	err = json.Unmarshal(marshalledProps, &relProps)
-	if err != nil {
-		logrus.Errorf("%s: %s\n", "Cannot parse relation props", err.Error())
-		return nil, err
-	}
-
-	relProps["_from"] = from
-	relProps["_to"] = to
-
-	tbl := multidb.Table(&table{Db: r.Graph.Db, Name: r.Name})
-	relation, err := tbl.Insert("", relProps)
+	tbl := &table{Db: r.Graph.Db, Name: r.Name, Collection: r.Collection}
+	relation, err := tbl.Insert(data, &res)
 
 	if err != nil {
 		return nil, errors.New(multidb.EXCEPTION_RELATION_INSERT_ERROR)
@@ -364,17 +337,17 @@ func (r *relation) Insert(from, to string, props interface{}) (interface{}, erro
 	return relation, nil
 }
 
-func (r *relation) Find(id string) (interface{}, error) {
+func (r *relation) Find(id string, res interface{}) (interface{}, error) {
 	tbl := multidb.Table(&table{Db: r.Graph.Db, Name: r.Name})
-	return tbl.Find(id)
+	return tbl.Find(id, &res)
 }
 
-func (r *relation) Update(id string, doc interface{}) (interface{}, error) {
+func (r *relation) Update(id string, doc interface{}, res interface{}) (interface{}, error) {
 	tbl := multidb.Table(&table{Db: r.Graph.Db, Name: r.Name})
-	return tbl.Update(id, doc)
+	return tbl.Update(id, doc, &res)
 }
 
-func (r *relation) Delete(id string) (interface{}, error) {
+func (r *relation) Delete(id string, res interface{}) (interface{}, error) {
 	tbl := multidb.Table(&table{Db: r.Graph.Db, Name: r.Name})
-	return tbl.Delete(id)
+	return tbl.Delete(id, &res)
 }

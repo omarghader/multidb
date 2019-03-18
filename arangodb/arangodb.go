@@ -1,4 +1,4 @@
-package multidb
+package arangodb
 
 //
 // import (
