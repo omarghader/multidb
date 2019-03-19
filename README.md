@@ -16,7 +16,7 @@ The aim of this library is to make one interface for multiple databases.
 # Example
 
 ```go
-db := NewArangodb(multidb.ConnectionOptions{
+db := arangodb.NewArangodb(multidb.ConnectionOptions{
   Host:     "localhost",
   Port:     "8529",
   Username: "root",
@@ -50,7 +50,7 @@ db.Graph("graph_test").Create()
 
 // Create relation
 db.Graph("graph_test").Relation("is_related").Insert(
-  Edge{
+  arangodb.Edge{
     From: doc1Res.ID,
     To:   doc2Res.ID,
   }, map[string]interface{}{"prop1": "friend"})
