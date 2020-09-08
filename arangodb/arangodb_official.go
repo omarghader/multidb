@@ -186,13 +186,36 @@ func (t *table) Drop() error {
 
 func (t *table) Insert(doc interface{}, res interface{}) (interface{}, error) {
 
-	result, err := t.Collection.CreateDocument(nil, doc)
+	metadata, err := t.Collection.CreateDocument(nil, doc)
 	if err != nil {
 		logrus.Errorf("%s: %s\n", multidb.EXCEPTION_TABLE_INSERT_ERROR, err.Error())
 		return nil, err
 	}
 
-	return result, nil
+	if res != nil {
+
+		docMap, err := multidb.ToMap(doc)
+		if err != nil {
+			logrus.Error("errror %s", err.Error())
+			logrus.Errorf("Err map %s: %s\n", multidb.EXCEPTION_JSON_MARSHAL, err.Error())
+			return nil, err
+		}
+
+		metadataMap, err := multidb.ToMap(metadata)
+		if err != nil {
+			logrus.Error("errror %s", err.Error())
+			logrus.Errorf("Err map %s: %s\n", multidb.EXCEPTION_JSON_MARSHAL, err.Error())
+			return nil, err
+		}
+
+		for k, v := range metadataMap {
+			docMap[k] = v
+		}
+
+		multidb.ToStruct(docMap, &res)
+	}
+
+	return metadata, nil
 }
 
 func (t *table) Find(id string, res interface{}) (interface{}, error) {
@@ -206,7 +229,7 @@ func (t *table) Find(id string, res interface{}) (interface{}, error) {
 
 func (t *table) Update(id string, doc interface{}, res interface{}) (interface{}, error) {
 
-	result, err := t.Collection.UpdateDocument(nil, id, doc)
+	_, err := t.Collection.UpdateDocument(nil, id, doc)
 
 	if err != nil {
 		logrus.Errorf("%s: %s\n", multidb.EXCEPTION_TABLE_UPDATE_ERROR, err.Error())
@@ -214,10 +237,10 @@ func (t *table) Update(id string, doc interface{}, res interface{}) (interface{}
 	}
 
 	if res != nil {
-		multidb.ToStruct(result, &res)
+		multidb.ToStruct(doc, &res)
 	}
 
-	return result, nil
+	return res, nil
 }
 
 func (t *table) Delete(id string, res interface{}) (interface{}, error) {
