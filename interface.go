@@ -14,7 +14,7 @@ type Database interface {
 	Drop() error
 	Table(name string) Table
 	Graph(name string) Graph
-	ExecQuery(query string, params map[string]interface{}, res []interface{}) ([]interface{}, error)
+	ExecQuery(query string, params map[string]interface{}, res interface{}) (interface{}, error)
 }
 
 type Table interface {

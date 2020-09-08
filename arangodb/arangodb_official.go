@@ -104,29 +104,38 @@ func (d *database) Graph(name string) multidb.Graph {
 	return &graph{Db: d, Name: name}
 }
 
-func (d *database) ExecQuery(query string, params map[string]interface{}, res []interface{}) ([]interface{}, error) {
+func (d *database) ExecQuery(query string, params map[string]interface{}, res interface{}) (interface{}, error) {
 	cursor, err := d.getSession().Query(nil, query, params)
-
 	if err != nil {
 		logrus.Errorf("%s: %s\n", multidb.EXCEPTION_QUERY, err.Error())
 		return nil, errors.New(multidb.EXCEPTION_QUERY)
 	}
 	defer cursor.Close()
 
+	var docs []interface{}
+	hasMore := true
 	for {
 		var doc interface{}
 		_, err := cursor.ReadDocument(nil, &doc)
 		if driver.IsNoMoreDocuments(err) {
-			break
+			hasMore = false
 		} else if err != nil {
 			logrus.Errorf("%s: %s\n", multidb.EXCEPTION_QUERY, err.Error())
 			return nil, errors.New(multidb.EXCEPTION_QUERY)
 		}
 
-		res = append(res, doc)
+		if !hasMore {
+			break
+		}
+		docs = append(docs, doc)
+
 	}
 
-	return res, nil
+	if res != nil {
+		multidb.ToStruct(docs, &res)
+	}
+
+	return docs, nil
 }
 
 // -----------------------------------------------
@@ -183,21 +192,16 @@ func (t *table) Insert(doc interface{}, res interface{}) (interface{}, error) {
 		return nil, err
 	}
 
-	if res != nil {
-		multidb.ToStruct(result, &res)
-	}
-
 	return result, nil
 }
 
 func (t *table) Find(id string, res interface{}) (interface{}, error) {
-
-	_, err := t.Collection.ReadDocument(nil, id, res)
+	doc, err := t.Collection.ReadDocument(nil, id, res)
 	if err != nil {
 		logrus.Errorf("%s: %s\n", multidb.EXCEPTION_TABLE_FIND_ERROR, err.Error())
 		return nil, err
 	}
-	return res, nil
+	return doc, nil
 }
 
 func (t *table) Update(id string, doc interface{}, res interface{}) (interface{}, error) {
