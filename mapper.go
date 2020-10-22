@@ -51,10 +51,11 @@ func ToStruct(input interface{}, res interface{}) error {
 		return err
 	}
 
-	err = json.Unmarshal(inputBytes, &res)
+	err = json.Unmarshal(inputBytes, res)
 	if err != nil {
 		logrus.Errorf("%s: %s\n", EXCEPTION_JSON_UNMARSHAL, err)
 		return err
 	}
+
 	return nil
 }
